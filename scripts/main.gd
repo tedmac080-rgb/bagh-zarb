@@ -134,11 +134,11 @@ func show_map():
 		var unlocked=i<=int(state["garden"])
 		var g=GARDENS[i]
 		var txt=str(g["emoji"])+"\n"+str(g["name"])+"\n"+("آباد شده" if i<int(state["garden"]) else ("در حال یادگیری" if unlocked else "قفل"))
-		var b=button(txt,func(idx=i): if idx<=int(state["garden"]): state["garden"]=idx; save_state(); start_garden(),120)
+		var b=button(txt,func(idx=i): select_garden(idx),120)
 		b.disabled=!unlocked; b.size_flags_horizontal=Control.SIZE_EXPAND_FILL; grid.add_child(b)
 	root_box.add_child(button("بازگشت",func(): show_home(),58))
 
-func start_garden():
+func select_garden(idx:int):\n\tif idx<=int(state["garden"]):\n\t\tstate["garden"]=idx\n\t\tstate["stage"]=0\n\t\tsave_state()\n\t\tstart_garden()\n\nfunc start_garden():
 	mode="garden"; clear_root()
 	var gi=int(state["garden"]); var g=GARDENS[gi]
 	var top=HBoxContainer.new(); root_box.add_child(top)
