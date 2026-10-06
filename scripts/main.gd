@@ -1,201 +1,262 @@
 extends Control
 
-const SAVE_PATH := "user://progress.json"
-const QUESTIONS := [
-	{"a": 2, "b": 3, "answers": [6, 5, 8]},
-	{"a": 2, "b": 4, "answers": [8, 6, 10]},
-	{"a": 1, "b": 5, "answers": [5, 6, 4]},
-	{"a": 2, "b": 5, "answers": [10, 8, 12]},
-	{"a": 2, "b": 6, "answers": [12, 10, 14]}
+const SAVE_PATH := "user://bagh_zarb_v2.json"
+const CREAM := Color("#F8F0D8")
+const INK := Color("#173F35")
+const GOLD := Color("#D8A943")
+const PANEL := Color("#FFF9E9")
+const WATER := Color("#55B8C6")
+const GREEN := Color("#4D8B58")
+const DARK_GREEN := Color("#24533D")
+const SOFT_RED := Color("#B9504E")
+
+const GARDENS := [
+	{"name":"باغ سیب","emoji":"🍎","accent":"#B9504E","tables":[1,2],"desc":"گروه‌های برابر و ضرب‌های ۱ و ۲"},
+	{"name":"باغ هلو","emoji":"🍑","accent":"#E99B7A","tables":[5,10],"desc":"ضرب‌های لنگر ۵ و ۱۰"},
+	{"name":"باغ انار","emoji":"🔴","accent":"#9D343C","tables":[3,4],"desc":"ساختن ضرب‌های ۳ و ۴"},
+	{"name":"باغ انگور","emoji":"🍇","accent":"#76578F","tables":[6],"desc":"ضرب ۶ و ساختن از دانسته‌ها"},
+	{"name":"باغ نارنج","emoji":"🍊","accent":"#D98235","tables":[9],"desc":"ضرب ۹ و مرور ترکیبی"},
+	{"name":"باغ گل محمدی","emoji":"🌹","accent":"#C16B82","tables":[7],"desc":"ضرب ۷ با راهبرد"},
+	{"name":"باغ زعفران","emoji":"🌸","accent":"#7C5A9A","tables":[8],"desc":"ضرب ۸ و مرور پیشرفته"},
+	{"name":"باغ هزاررنگ","emoji":"✨","accent":"#C69C42","tables":[2,3,4,5,6,7,8,9,10],"desc":"تسلط ترکیبی همه‌ی باغ‌ها"}
 ]
 
-var question_index := 0
-var correct_count := 0
-var attempts := 0
-var mastery := 0.0
-var retention := 0.0
-var progress := 0
-var question_label: Label
-var feedback_label: Label
-var garden_label: Label
-var progress_bar: ProgressBar
-var answer_box: VBoxContainer
+var state := {"garden":0,"stage":0,"mastery":{},"retention":{},"keepsakes":[],"shamsehs":0}
+var rng := RandomNumberGenerator.new()
+var current_question := {}
+var mode := "home"
+var root_box: VBoxContainer
+var garden_canvas: Control
+var content_box: VBoxContainer
+var feedback: Label
+var progress_label: Label
 
-func _ready() -> void:
-	layout_direction = Control.LAYOUT_DIRECTION_RTL
-	_load_progress()
-	_build_ui()
-	_show_question()
+class GardenCanvas:
+	extends Control
+	var level := 0
+	var garden_index := 0
+	var accent := Color("#B9504E")
+	func _draw():
+		var w=size.x; var h=size.y
+		draw_rect(Rect2(0,0,w,h), Color("#DCEAC8"))
+		draw_rect(Rect2(0,h*0.68,w,h*0.32), Color("#B9D49B"))
+		# distant Iranian garden wall
+		draw_rect(Rect2(0,h*0.13,w,h*0.12), Color("#E8D6AF"))
+		for x in range(30,int(w),150):
+			draw_circle(Vector2(x,h*0.13),22,Color("#E8D6AF"))
+		# central Persian gate
+		var gx=w*0.5
+		draw_rect(Rect2(gx-72,h*0.05,144,h*0.22),Color("#D6B77E"))
+		draw_circle(Vector2(gx,h*0.14),48,Color("#5FA8A0"))
+		draw_rect(Rect2(gx-42,h*0.14,84,h*0.13),Color("#6E4E36"))
+		# water channel becomes alive
+		var wc = WATER if level>=1 else Color("#A8B8AE")
+		draw_polygon(PackedVector2Array([Vector2(w*.44,h*.27),Vector2(w*.56,h*.27),Vector2(w*.62,h),Vector2(w*.38,h)]),PackedColorArray([wc]))
+		# trees
+		for i in range(8):
+			var side=-1 if i%2==0 else 1
+			var row=i/2
+			var px=gx+side*(150+row*95)
+			var py=h*.38+row*52
+			draw_rect(Rect2(px-8,py+30,16,62),Color("#79543B"))
+			var leaf=Color("#7B9871") if level==0 else GREEN
+			draw_circle(Vector2(px,py+18),54,leaf)
+			draw_circle(Vector2(px-30,py+32),34,leaf)
+			draw_circle(Vector2(px+30,py+32),34,leaf)
+			if level>=2:
+				for k in range(5):
+					var a=float(k)*1.256
+					draw_circle(Vector2(px+cos(a)*30,py+22+sin(a)*25),7,accent)
+		# flower beds / birds at higher restoration
+		if level>=3:
+			for x in range(70,int(w)-40,95):
+				draw_circle(Vector2(x,h*.86),8,Color("#E8A5B6"))
+				draw_circle(Vector2(x+14,h*.87),7,Color("#F2C36B"))
+		if level>=4:
+			for x in [w*.25,w*.72]:
+				draw_arc(Vector2(x,h*.24),18,3.4,5.9,12,DARK_GREEN,3)
+				draw_arc(Vector2(x+32,h*.24),18,3.4,5.9,12,DARK_GREEN,3)
+	func configure(idx:int, restoration:int):
+		garden_index=idx; level=restoration
+		accent=Color(GARDENS[idx]["accent"])
+		queue_redraw()
 
-func _build_ui() -> void:
-	var bg := ColorRect.new()
-	bg.color = Color("#F7F0DD")
-	bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
-	add_child(bg)
+func _ready():
+	rng.randomize()
+	load_state()
+	build_shell()
+	show_home()
 
-	var root := VBoxContainer.new()
-	root.set_anchors_preset(Control.PRESET_FULL_RECT)
-	root.offset_left = 54
-	root.offset_right = -54
-	root.offset_top = 70
-	root.offset_bottom = -60
-	root.add_theme_constant_override("separation", 28)
-	add_child(root)
+func build_shell():
+	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	var bg=ColorRect.new(); bg.color=CREAM; bg.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT); add_child(bg)
+	var margin=MarginContainer.new(); margin.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	margin.add_theme_constant_override("margin_left",36); margin.add_theme_constant_override("margin_right",36)
+	margin.add_theme_constant_override("margin_top",24); margin.add_theme_constant_override("margin_bottom",24); add_child(margin)
+	root_box=VBoxContainer.new(); root_box.add_theme_constant_override("separation",16); margin.add_child(root_box)
 
-	var title := Label.new()
-	title.text = "باغِ ضرب"
-	title.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	title.add_theme_font_size_override("font_size", 52)
-	title.add_theme_color_override("font_color", Color("#174A3A"))
-	root.add_child(title)
+func clear_root():
+	for c in root_box.get_children(): c.queue_free()
 
-	var companions := Label.new()
-	companions.text = "شهرزاد و شهروز، خواهر و برادرِ باغبان"
-	companions.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	companions.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	companions.add_theme_font_size_override("font_size", 25)
-	companions.add_theme_color_override("font_color", Color("#5C5141"))
-	root.add_child(companions)
+func title(text:String, size_px:=36):
+	var l=Label.new(); l.text=text; l.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
+	l.add_theme_font_size_override("font_size",size_px); l.add_theme_color_override("font_color",INK); return l
 
-	garden_label = Label.new()
-	garden_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	garden_label.add_theme_font_size_override("font_size", 32)
-	garden_label.add_theme_color_override("font_color", Color("#8A2F25"))
-	root.add_child(garden_label)
+func body(text:String, size_px:=22):
+	var l=Label.new(); l.text=text; l.horizontal_alignment=HORIZONTAL_ALIGNMENT_CENTER
+	l.autowrap_mode=TextServer.AUTOWRAP_WORD_SMART; l.add_theme_font_size_override("font_size",size_px)
+	l.add_theme_color_override("font_color",Color("#4D554D")); return l
 
-	progress_bar = ProgressBar.new()
-	progress_bar.min_value = 0
-	progress_bar.max_value = 5
-	progress_bar.value = progress
-	progress_bar.show_percentage = false
-	progress_bar.custom_minimum_size = Vector2(0, 34)
-	root.add_child(progress_bar)
+func button(text:String, cb:Callable, min_h:=68):
+	var b=Button.new(); b.text=text; b.custom_minimum_size=Vector2(0,min_h)
+	b.add_theme_font_size_override("font_size",24); b.add_theme_color_override("font_color",INK)
+	b.pressed.connect(cb); return b
 
-	var spacer := Control.new()
-	spacer.custom_minimum_size = Vector2(0, 40)
-	root.add_child(spacer)
+func show_home():
+	mode="home"; clear_root()
+	root_box.add_child(title("باغ ضرب",48))
+	root_box.add_child(body("ماجرای شهروز و شهرزاد؛ خواهر و برادر باغبان"))
+	var canvas=GardenCanvas.new(); canvas.custom_minimum_size=Vector2(0,430); root_box.add_child(canvas)
+	canvas.configure(int(state["garden"]),min(4,int(state["stage"])))
+	var g=GARDENS[int(state["garden"])]
+	root_box.add_child(title(str(g["emoji"])+"  "+str(g["name"]),32))
+	root_box.add_child(body(str(g["desc"])))
+	root_box.add_child(button("ادامه‌ی ماجرا",func(): start_garden()))
+	var row=HBoxContainer.new(); row.add_theme_constant_override("separation",12); root_box.add_child(row)
+	var mapb=button("باغ‌های من",func(): show_map(),58); mapb.size_flags_horizontal=Control.SIZE_EXPAND_FILL; row.add_child(mapb)
+	var fest=button("جشن باغ",func(): start_festival(),58); fest.size_flags_horizontal=Control.SIZE_EXPAND_FILL; row.add_child(fest)
+	root_box.add_child(body("شمسه‌ها: "+str(state["shamsehs"])+"   •   یادگارهای باغ: "+str(state["keepsakes"].size()),18))
 
-	question_label = Label.new()
-	question_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	question_label.add_theme_font_size_override("font_size", 72)
-	question_label.add_theme_color_override("font_color", Color("#173D34"))
-	root.add_child(question_label)
+func show_map():
+	mode="map"; clear_root(); root_box.add_child(title("باغ‌های من",40))
+	var grid=GridContainer.new(); grid.columns=4; grid.size_flags_vertical=Control.SIZE_EXPAND_FILL; root_box.add_child(grid)
+	for i in range(GARDENS.size()):
+		var unlocked=i<=int(state["garden"])
+		var g=GARDENS[i]
+		var txt=str(g["emoji"])+"\n"+str(g["name"])+"\n"+("آباد شده" if i<int(state["garden"]) else ("در حال یادگیری" if unlocked else "قفل"))
+		var b=button(txt,func(idx=i): if idx<=int(state["garden"]): state["garden"]=idx; save_state(); start_garden(),120)
+		b.disabled=!unlocked; b.size_flags_horizontal=Control.SIZE_EXPAND_FILL; grid.add_child(b)
+	root_box.add_child(button("بازگشت",func(): show_home(),58))
 
-	var hint := Label.new()
-	hint.text = "به گروه‌ها فکر کن؛ عجله‌ای نیست."
-	hint.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	hint.add_theme_font_size_override("font_size", 25)
-	hint.add_theme_color_override("font_color", Color("#6C705F"))
-	root.add_child(hint)
+func start_garden():
+	mode="garden"; clear_root()
+	var gi=int(state["garden"]); var g=GARDENS[gi]
+	var top=HBoxContainer.new(); root_box.add_child(top)
+	var back=button("‹ خانه",func(): show_home(),52); top.add_child(back)
+	var tl=title(str(g["emoji"])+" "+str(g["name"]),34); tl.size_flags_horizontal=Control.SIZE_EXPAND_FILL; top.add_child(tl)
+	progress_label=body("",18); top.add_child(progress_label)
+	garden_canvas=GardenCanvas.new(); garden_canvas.custom_minimum_size=Vector2(0,390); root_box.add_child(garden_canvas)
+	garden_canvas.configure(gi,min(4,int(state["stage"])))
+	content_box=VBoxContainer.new(); content_box.add_theme_constant_override("separation",12); root_box.add_child(content_box)
+	feedback=body("شهروز و شهرزاد منتظرند باغ را با ضرب‌ها بیدار کنی.",19); root_box.add_child(feedback)
+	next_activity()
 
-	answer_box = VBoxContainer.new()
-	answer_box.add_theme_constant_override("separation", 18)
-	root.add_child(answer_box)
+func next_activity():
+	for c in content_box.get_children(): c.queue_free()
+	var stage=int(state["stage"]); var gi=int(state["garden"])
+	progress_label.text="بخش "+str(stage+1)+" از ۵"
+	if stage>=5:
+		complete_garden(); return
+	var kind=["build","find","build","complete","find"][stage]
+	current_question=make_question(gi,kind)
+	if kind=="build": render_build()
+	elif kind=="complete": render_complete()
+	else: render_find()
 
-	feedback_label = Label.new()
-	feedback_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	feedback_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	feedback_label.add_theme_font_size_override("font_size", 30)
-	feedback_label.add_theme_color_override("font_color", Color("#174A3A"))
-	root.add_child(feedback_label)
+func make_question(gi:int, kind:String):
+	var tables:Array=GARDENS[gi]["tables"]; var a=int(tables[rng.randi_range(0,tables.size()-1)])
+	var b=rng.randi_range(2,9)
+	return {"a":a,"b":b,"answer":a*b,"kind":kind,"tries":0}
 
-	var footer := Label.new()
-	footer.text = "هدهد راهنماست؛ اشتباه یعنی یک فرصت دیگر برای کشف."
-	footer.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	footer.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	footer.add_theme_font_size_override("font_size", 22)
-	footer.add_theme_color_override("font_color", Color("#7A6A4E"))
-	root.add_child(footer)
-	_refresh_garden_text()
+func render_build():
+	var a=int(current_question["a"]); var b=int(current_question["b"])
+	content_box.add_child(title("بساز: "+str(a)+" گروهِ "+str(b)+"تایی",28))
+	content_box.add_child(body("سیب‌ها را بشمار؛ هر سبد یک گروه برابر است.",18))
+	var groups=HBoxContainer.new(); groups.alignment=BoxContainer.ALIGNMENT_CENTER; groups.add_theme_constant_override("separation",14); content_box.add_child(groups)
+	for i in range(a):
+		var box=PanelContainer.new(); var vb=VBoxContainer.new(); box.add_child(vb)
+		var apples=Label.new(); apples.text="● ".repeat(b); apples.add_theme_font_size_override("font_size",25); apples.add_theme_color_override("font_color",SOFT_RED)
+		vb.add_child(apples); var gl=body(str(b),16); vb.add_child(gl); groups.add_child(box)
+	var answers=make_choices(a*b,[a*b-b,a*b+b]); content_box.add_child(answers)
 
-func _show_question() -> void:
-	if question_index >= QUESTIONS.size():
-		_finish_session()
-		return
-	for child in answer_box.get_children():
-		child.queue_free()
-	var q: Dictionary = QUESTIONS[question_index]
-	question_label.text = "%d × %d = ؟" % [q.a, q.b]
-	feedback_label.text = ""
-	var answers: Array = q.answers.duplicate()
-	answers.shuffle()
-	for value in answers:
-		var button := Button.new()
-		button.text = str(value)
-		button.custom_minimum_size = Vector2(0, 110)
-		button.add_theme_font_size_override("font_size", 42)
-		button.pressed.connect(_answer.bind(int(value), int(q.a) * int(q.b)))
-		answer_box.add_child(button)
+func render_find():
+	var a=int(current_question["a"]); var b=int(current_question["b"])
+	content_box.add_child(title("پیدا کن",25))
+	content_box.add_child(title(str(a)+" × "+str(b)+" = ؟",44))
+	content_box.add_child(make_choices(a*b,[a*b-a,a*b+b]))
 
-func _answer(value: int, expected: int) -> void:
-	attempts += 1
-	if value == expected:
-		correct_count += 1
-		mastery = min(100.0, mastery + 12.0)
-		retention = min(100.0, retention + 6.0)
-		progress = min(5, progress + 1)
-		progress_bar.value = progress
-		feedback_label.text = "آفرین! بخشی از باغ سیب جان گرفت 🌱"
-		_refresh_garden_text()
-		_save_progress()
-		question_index += 1
-		await get_tree().create_timer(0.8).timeout
-		_show_question()
+func render_complete():
+	var a=int(current_question["a"]); var b=int(current_question["b"]); var anchor=max(1,b-1)
+	content_box.add_child(title("کامل کن",25))
+	content_box.add_child(body(str(a)+" × "+str(anchor)+" = "+str(a*anchor)+"  را می‌دانی.",20))
+	content_box.add_child(title(str(a)+" × "+str(b)+" = "+str(a*anchor)+" + "+str(a)+" = ؟",36))
+	content_box.add_child(make_choices(a*b,[a*anchor,a*b+a]))
+
+func make_choices(correct:int, distractors:Array):
+	var row=HBoxContainer.new(); row.alignment=BoxContainer.ALIGNMENT_CENTER; row.add_theme_constant_override("separation",18)
+	var vals=[correct,int(distractors[0]),int(distractors[1])]; vals.shuffle()
+	for v in vals:
+		var b=button(str(v),func(value=v): answer(value),70); b.custom_minimum_size.x=170; row.add_child(b)
+	return row
+
+func answer(value:int):
+	var correct=int(current_question["answer"]); var key=str(current_question["a"])+"x"+str(current_question["b"])
+	current_question["tries"]=int(current_question["tries"])+1
+	if value==correct:
+		var independent=int(current_question["tries"])==1
+		var old=float(state["mastery"].get(key,0))
+		state["mastery"][key]=min(100.0,old+(18.0 if independent else 8.0))
+		if independent: state["retention"][key]=min(100.0,float(state["retention"].get(key,0))+10.0)
+		state["shamsehs"]=int(state["shamsehs"])+1
+		feedback.text="آفرین! با این ضرب، باغ کمی زنده‌تر شد."
+		state["stage"]=int(state["stage"])+1; save_state()
+		garden_canvas.configure(int(state["garden"]),min(4,int(state["stage"])))
+		await get_tree().create_timer(0.65).timeout
+		next_activity()
 	else:
-		mastery = max(0.0, mastery - 2.0)
-		feedback_label.text = "یک بار دیگر نگاه کن؛ می‌توانی گروه‌ها را در ذهنت بسازی."
-		_save_progress()
+		feedback.text="هنوز نه؛ اشکالی ندارد. به گروه‌ها نگاه کن و دوباره بساز."
+		if int(current_question["tries"])>=2:
+			feedback.text="راهنمای هدهد: "+str(current_question["a"])+" گروه داریم و در هر گروه "+str(current_question["b"])+" تاست؛ آرام بشمار."
 
-func _refresh_garden_text() -> void:
-	var states := [
-		"باغ سیب هنوز منتظر آب و شکوفه‌هاست",
-		"جوی آب آرام به باغ رسید 💧",
-		"جوانه‌ها بیدار شدند 🌱",
-		"درخت‌ها سبزتر شدند 🌿",
-		"سیب‌ها روی شاخه‌ها نشستند 🍎",
-		"باغ سیب شکوفا شد؛ دروازه‌ی باغ هلو نزدیک است ✨"
-	]
-	garden_label.text = states[clampi(progress, 0, states.size() - 1)]
+func complete_garden():
+	for c in content_box.get_children(): c.queue_free()
+	garden_canvas.configure(int(state["garden"]),4)
+	content_box.add_child(title("باغ آباد شد! ✨",36))
+	if int(state["garden"])<GARDENS.size()-1:
+		var nxt=GARDENS[int(state["garden"])+1]
+		content_box.add_child(body("دروازه باز شد؛ آن‌طرف "+str(nxt["emoji"])+" "+str(nxt["name"])+" منتظر توست.",22))
+		content_box.add_child(button("عبور از دروازه",func(): state["garden"]=int(state["garden"])+1; state["stage"]=0; save_state(); start_garden()))
+	else:
+		content_box.add_child(body("تو همه‌ی باغ‌ها را بیدار کردی. حالا جشن هزاررنگ آماده است.",22))
+		content_box.add_child(button("جشن نهایی",func(): start_festival()))
+	content_box.add_child(button("بازگشت به خانه",func(): show_home(),54))
 
-func _finish_session() -> void:
-	question_label.text = "آفرین!"
-	for child in answer_box.get_children():
-		child.queue_free()
-	feedback_label.text = "امروز باغ سیب را آبادتر کردی. آموخته‌ها در روزهای بعد دوباره برمی‌گردند تا در ذهنت ماندگار شوند."
-	var restart := Button.new()
-	restart.text = "مرور دوباره"
-	restart.custom_minimum_size = Vector2(0, 110)
-	restart.add_theme_font_size_override("font_size", 34)
-	restart.pressed.connect(_restart_session)
-	answer_box.add_child(restart)
+var festival_left:=0
+func start_festival():
+	mode="festival"; festival_left=8; clear_root(); root_box.add_child(title("جشن باغ 🎐",42))
+	root_box.add_child(body("۸ یادآوری کوتاه از باغ‌های قبلی؛ بدون عجله و بدون باخت.",20))
+	content_box=VBoxContainer.new(); content_box.add_theme_constant_override("separation",14); root_box.add_child(content_box)
+	feedback=body("",19); root_box.add_child(feedback); festival_question()
 
-func _restart_session() -> void:
-	question_index = 0
-	correct_count = 0
-	attempts = 0
-	_show_question()
+func festival_question():
+	for c in content_box.get_children(): c.queue_free()
+	if festival_left<=0:
+		var keeps=["چراغ ایرانی","آشیانه‌ی هدهد","نیمکت کاشی‌کاری","کوزه‌ی باغ","آبنمای کوچک"]
+		var prize=keeps[rng.randi_range(0,keeps.size()-1)]
+		if !state["keepsakes"].has(prize): state["keepsakes"].append(prize)
+		save_state(); content_box.add_child(title("یادگار این جشن: "+prize+" ✨",32)); content_box.add_child(button("دیدن باغ‌ها",func(): show_map())); return
+	var max_g=int(state["garden"]); var gi=rng.randi_range(0,max_g)
+	current_question=make_question(gi,"festival")
+	content_box.add_child(body("یادآوری "+str(9-festival_left)+" از ۸",18))
+	content_box.add_child(title(str(current_question["a"])+" × "+str(current_question["b"])+" = ؟",44))
+	content_box.add_child(make_choices(int(current_question["answer"]),[int(current_question["answer"])-int(current_question["a"]),int(current_question["answer"])+int(current_question["b"])]))
 
-func _save_progress() -> void:
-	var data := {
-		"version": 1,
-		"garden": "apple_garden",
-		"garden_progress": progress,
-		"mastery": mastery,
-		"retention": retention,
-		"last_session_unix": int(Time.get_unix_time_from_system())
-	}
-	var file := FileAccess.open(SAVE_PATH, FileAccess.WRITE)
-	if file:
-		file.store_string(JSON.stringify(data))
+func save_state():
+	var file=FileAccess.open(SAVE_PATH,FileAccess.WRITE)
+	if file: file.store_string(JSON.stringify(state))
 
-func _load_progress() -> void:
-	if not FileAccess.file_exists(SAVE_PATH):
-		return
-	var file := FileAccess.open(SAVE_PATH, FileAccess.READ)
-	if not file:
-		return
-	var parsed = JSON.parse_string(file.get_as_text())
-	if parsed is Dictionary:
-		progress = int(parsed.get("garden_progress", 0))
-		mastery = float(parsed.get("mastery", 0.0))
-		retention = float(parsed.get("retention", 0.0))
+func load_state():
+	if FileAccess.file_exists(SAVE_PATH):
+		var file=FileAccess.open(SAVE_PATH,FileAccess.READ)
+		var parsed=JSON.parse_string(file.get_as_text())
+		if typeof(parsed)==TYPE_DICTIONARY: state.merge(parsed,true)
