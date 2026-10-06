@@ -13,6 +13,7 @@ var state := {"stage":0,"shamsehs":0,"garden_awake":false,"festival_unlocked":fa
 var layer: Control
 var feedback: Label
 var task_title: Label
+var apples_placed := 0
 var basket_counts := [0,0,0]
 var target_each := 2
 var rng := RandomNumberGenerator.new()
@@ -147,7 +148,7 @@ func start_garden():
 	var reset=make_button("از نو",func(): reset_baskets(),TEAL); reset.custom_minimum_size=Vector2(180,58); reset.size_flags_horizontal=Control.SIZE_SHRINK_CENTER; wb.add_child(reset)
 
 func build_hud():
-	var home=make_button("خانه",func(): show_home(),TEAL); home.position=Vector2(38,30); home.size=Vector2(180,65); home.custom_minimum_size=Vector2(180,65); layer.add_child(home)
+	var home=make_button("خانه",func(): show_home(),TEAL); home.position=Vector2(38,30); home.size=Vector2(150,58); home.custom_minimum_size=Vector2(150,58); layer.add_child(home)
 	var badge=PanelContainer.new(); badge.position=Vector2(1510,30); badge.size=Vector2(360,70); badge.add_theme_stylebox_override("panel",panel_style(Color("#fff6d9ee"),24,GOLD)); layer.add_child(badge)
 	badge.add_child(make_label("✦  "+str(state["shamsehs"])+"     باغ سیب",22,INK))
 	var dots=make_label("●  ○  ○  ○",24,GOLD); dots.position=Vector2(820,38); dots.size=Vector2(280,55); layer.add_child(dots)
@@ -188,25 +189,38 @@ func reset_baskets():
 
 func show_bridge():
 	clear_screen(); add_background(); build_hud()
-	var p=PanelContainer.new(); p.position=Vector2(430,180); p.size=Vector2(1060,680); p.add_theme_stylebox_override("panel",panel_style(Color("#fff8eaf2"),38,GOLD)); layer.add_child(p)
-	var vb=VBoxContainer.new(); vb.alignment=BoxContainer.ALIGNMENT_CENTER; vb.add_theme_constant_override("separation",22); p.add_child(vb)
-	vb.add_child(make_label("کشف کردی!",38,TEAL))
-	vb.add_child(make_label("۲ + ۲ + ۲ = ۶",48,INK))
-	vb.add_child(make_label("پس سه گروهِ دوتایی یعنی:",24))
-	vb.add_child(make_label("۳ × ۲ = ۶",62,RED))
-	vb.add_child(make_label("آب باغ دوباره راه افتاد ✨",24,GREEN))
-	var next=make_button("مرحله بعد",func(): show_find(),ORANGE); next.size_flags_horizontal=Control.SIZE_SHRINK_CENTER; vb.add_child(next)
+	var bird=TextureRect.new(); bird.texture=load("res://assets/hoopoe.svg"); bird.position=Vector2(1420,190); bird.size=Vector2(240,200); bird.expand_mode=TextureRect.EXPAND_IGNORE_SIZE; layer.add_child(bird)
+	var p=PanelContainer.new(); p.position=Vector2(610,155); p.size=Vector2(700,420); p.add_theme_stylebox_override("panel",panel_style(Color("#fff8eae8"),34,GOLD)); layer.add_child(p)
+	var vb=VBoxContainer.new(); vb.alignment=BoxContainer.ALIGNMENT_CENTER; vb.add_theme_constant_override("separation",16); p.add_child(vb)
+	vb.add_child(make_label("کشف کردی!",34,TEAL))
+	vb.add_child(make_label("۲ + ۲ + ۲ = ۶",42,INK))
+	vb.add_child(make_label("۳ × ۲ = ۶",56,RED))
+	vb.add_child(make_label("جوی آب دوباره جان گرفت ✨",22,GREEN))
+	var next=make_button("ادامه در باغ",func(): show_find(),ORANGE); next.size_flags_horizontal=Control.SIZE_SHRINK_CENTER; vb.add_child(next)
 
 func show_find():
 	clear_screen(); add_background(); build_hud()
-	var p=PanelContainer.new(); p.position=Vector2(430,180); p.size=Vector2(1060,700); p.add_theme_stylebox_override("panel",panel_style(Color("#fff8eaf2"),38,GOLD)); layer.add_child(p)
-	var vb=VBoxContainer.new(); vb.alignment=BoxContainer.ALIGNMENT_CENTER; vb.add_theme_constant_override("separation",24); p.add_child(vb)
-	vb.add_child(make_label("پیدا کن",38,TEAL)); vb.add_child(make_label("۴ × ۲ = ؟",66,INK))
-	vb.add_child(make_label("چهار گروه دوتایی چند سیب می‌شود؟",24))
-	var row=HBoxContainer.new(); row.alignment=BoxContainer.ALIGNMENT_CENTER; row.add_theme_constant_override("separation",24); vb.add_child(row)
-	for n in [6,8,10]:
-		var b=make_button(str(n),func(v=n): check_find(v),ORANGE); b.custom_minimum_size=Vector2(190,90); row.add_child(b)
-	feedback=make_label("می‌توانی در ذهنت چهار گروهِ دو‌تایی بسازی.",20); vb.add_child(feedback)
+	# Compact storybook ribbon: the garden remains the hero.
+	var ribbon=PanelContainer.new(); ribbon.position=Vector2(535,105); ribbon.size=Vector2(850,150)
+	ribbon.add_theme_stylebox_override("panel",panel_style(Color("#fff7e5e8"),30,GOLD)); layer.add_child(ribbon)
+	var rv=VBoxContainer.new(); rv.alignment=BoxContainer.ALIGNMENT_CENTER; ribbon.add_child(rv)
+	rv.add_child(make_label("پیدا کن",30,TEAL))
+	rv.add_child(make_label("۴ × ۲",48,INK))
+	rv.add_child(make_label("روی سنگی بپر که جواب درست روی آن است",18))
+	# Answer stones live inside the water channel, not in a quiz popup.
+	var values=[6,8,10]
+	var xs=[690,910,1130]
+	for i in range(3):
+		var stone=Button.new()
+		stone.text=str(values[i]); stone.position=Vector2(xs[i],610); stone.size=Vector2(180,105)
+		stone.add_theme_font_size_override("font_size",34)
+		stone.add_theme_color_override("font_color",INK)
+		stone.add_theme_stylebox_override("normal",panel_style(Color("#f4dfad"),50,Color("#b68747")))
+		stone.add_theme_stylebox_override("hover",panel_style(Color("#fff1c7"),50,GOLD))
+		var v=values[i]; stone.pressed.connect(func(): check_find(v)); layer.add_child(stone)
+	var bird=TextureRect.new(); bird.texture=load("res://assets/hoopoe.svg"); bird.position=Vector2(1420,225); bird.size=Vector2(230,190); bird.expand_mode=TextureRect.EXPAND_IGNORE_SIZE; layer.add_child(bird)
+	feedback=make_label("هدهد: چهار گروهِ دوتایی را در باغ پیدا کن.",21,CREAM)
+	feedback.position=Vector2(620,800); feedback.size=Vector2(680,70); layer.add_child(feedback)
 
 func check_find(v:int):
 	if v==8:
